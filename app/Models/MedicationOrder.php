@@ -37,4 +37,9 @@ class MedicationOrder extends Model
     {
         return $this->hasMany(MedicationOrderTime::class)->orderBy('time');
     }
+
+    public function administrations(): HasMany
+    {
+        return $this->hasMany(Administration::class);
+    }
 }
