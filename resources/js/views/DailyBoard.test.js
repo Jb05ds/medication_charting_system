@@ -18,6 +18,13 @@ const patient = {
     allergies: 'Latex',
 };
 
+const secondPatient = {
+    id: 2,
+    name: 'Second Resident',
+    room: '102',
+    allergies: null,
+};
+
 const order = {
     id: 20,
     drug_name: 'Fictional medicine',
@@ -35,6 +42,7 @@ let doseStatus;
 let doseReason;
 let taskStatus;
 let completedBy;
+let resolveSecondPatientChart;
 
 async function flushPromises() {
     await Promise.resolve();
@@ -86,14 +94,23 @@ describe('DailyBoard', () => {
         doseReason = null;
         taskStatus = 'done';
         completedBy = 'Demo Nurse';
-        axios.get.mockImplementation((url) => {
+        resolveSecondPatientChart = undefined;
+        axios.get.mockImplementation((url, config = {}) => {
             if (url === '/api/patients') {
-                return Promise.resolve({ data: { data: [patient] } });
+                return Promise.resolve({ data: { data: [patient, secondPatient] } });
             }
-            if (url === '/api/patients/1/orders') {
-                return Promise.resolve({ data: { data: orders } });
+            if (url.endsWith('/orders')) {
+                return Promise.resolve({
+                    data: { data: url === '/api/patients/1/orders' ? orders : [] },
+                });
             }
             if (url === '/api/chart') {
+                if (config.params?.patient_id === secondPatient.id) {
+                    return new Promise((resolve) => {
+                        resolveSecondPatientChart = resolve;
+                    });
+                }
+
                 return Promise.resolve({
                     data: {
                         data: [{
@@ -306,5 +323,37 @@ describe('DailyBoard', () => {
         await flushPromises();
 
         expect(board.textContent).toContain('No alert was sent. This button contacts no one.');
+    });
+
+    it('ignores a slower response after the resident selection changes again', async () => {
+        const board = await mountBoard();
+
+        board.querySelectorAll('.resident-sidebar .resident-card')[2].click();
+        await flushPromises();
+        expect(resolveSecondPatientChart).toBeTypeOf('function');
+
+        board.querySelectorAll('.resident-sidebar .resident-card')[0].click();
+        await flushPromises();
+        expect(board.textContent).toContain('Fictional medicine');
+
+        resolveSecondPatientChart({
+            data: {
+                data: [{
+                    medication_order_id: 99,
+                    patient_id: secondPatient.id,
+                    patient_name: secondPatient.name,
+                    room: secondPatient.room,
+                    drug_name: 'Stale resident dose',
+                    dose: '1 tablet',
+                    route: 'Oral',
+                    scheduled_for: '2026-11-27T07:00:00+00:00',
+                    status: 'overdue',
+                }],
+            },
+        });
+        await flushPromises();
+
+        expect(board.textContent).toContain('Fictional medicine');
+        expect(board.textContent).not.toContain('Stale resident dose');
     });
 });

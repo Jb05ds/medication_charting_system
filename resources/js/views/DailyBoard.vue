@@ -29,6 +29,7 @@ const medicationDraft = ref(createMedicationDraft());
 const toastMessage = ref('');
 const showEmergencyNotice = ref(false);
 let toastTimer;
+let latestDailyRequest = 0;
 
 const daysOfWeek = [
     { value: 0, label: 'Sun' },
@@ -161,9 +162,12 @@ async function loadPatients() {
 }
 
 async function loadDailyItems() {
+    const requestId = ++latestDailyRequest;
     isLoading.value = true;
     pageError.value = '';
+    medicationDoses.value = [];
     medicationOrders.value = [];
+    careTasks.value = [];
 
     const params = selectedPatientId.value
         ? { patient_id: selectedPatientId.value }
@@ -178,13 +182,21 @@ async function loadDailyItems() {
             axios.get('/api/tasks', { params }),
             ordersRequest,
         ]);
+        if (requestId !== latestDailyRequest) {
+            return;
+        }
+
         medicationDoses.value = chartResponse.data.data;
         careTasks.value = tasksResponse.data.data;
         medicationOrders.value = ordersResponse.data.data;
     } catch (error) {
-        pageError.value = errorMessage(error);
+        if (requestId === latestDailyRequest) {
+            pageError.value = errorMessage(error);
+        }
     } finally {
-        isLoading.value = false;
+        if (requestId === latestDailyRequest) {
+            isLoading.value = false;
+        }
     }
 }
 
