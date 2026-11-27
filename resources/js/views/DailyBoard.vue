@@ -8,6 +8,7 @@ const router = useRouter();
 const appTimezone = document.querySelector('meta[name="app-timezone"]')?.content || 'UTC';
 const patients = ref([]);
 const medicationDoses = ref([]);
+const medicationOrders = ref([]);
 const careTasks = ref([]);
 const isLoading = ref(true);
 const isSaving = ref(false);
@@ -20,9 +21,25 @@ const actionStatus = ref('given');
 const reason = ref('');
 const nurseName = ref('');
 const isReviewing = ref(false);
+const showMedicationForm = ref(false);
+const isMedicationReview = ref(false);
+const isMedicationSaving = ref(false);
+const medicationError = ref('');
+const medicationDraft = ref(createMedicationDraft());
 const toastMessage = ref('');
 const showEmergencyNotice = ref(false);
 let toastTimer;
+
+const daysOfWeek = [
+    { value: 0, label: 'Sun' },
+    { value: 1, label: 'Mon' },
+    { value: 2, label: 'Tue' },
+    { value: 3, label: 'Wed' },
+    { value: 4, label: 'Thu' },
+    { value: 5, label: 'Fri' },
+    { value: 6, label: 'Sat' },
+];
+const defaultDoseTimes = ['08:00', '12:00', '16:00', '20:00'];
 
 const selectedPatientId = computed(() => {
     const id = Number(route.query.patient);
@@ -146,18 +163,24 @@ async function loadPatients() {
 async function loadDailyItems() {
     isLoading.value = true;
     pageError.value = '';
+    medicationOrders.value = [];
 
     const params = selectedPatientId.value
         ? { patient_id: selectedPatientId.value }
         : {};
+    const ordersRequest = selectedPatientId.value
+        ? axios.get(`/api/patients/${selectedPatientId.value}/orders`)
+        : Promise.resolve({ data: { data: [] } });
 
     try {
-        const [chartResponse, tasksResponse] = await Promise.all([
+        const [chartResponse, tasksResponse, ordersResponse] = await Promise.all([
             axios.get('/api/chart', { params }),
             axios.get('/api/tasks', { params }),
+            ordersRequest,
         ]);
         medicationDoses.value = chartResponse.data.data;
         careTasks.value = tasksResponse.data.data;
+        medicationOrders.value = ordersResponse.data.data;
     } catch (error) {
         pageError.value = errorMessage(error);
     } finally {
@@ -266,6 +289,133 @@ function showToast(message) {
         toastMessage.value = '';
     }, 3500);
 }
+
+function createMedicationDraft() {
+    return {
+        drug_name: '',
+        dose: '',
+        route: 'Oral',
+        start_date: currentAppDate(),
+        end_date: '',
+        days_of_week: [1, 2, 3, 4, 5],
+        times: ['08:00'],
+        added_by: '',
+    };
+}
+
+function currentAppDate() {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: appTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(new Date());
+    const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+
+    return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+}
+
+function openMedicationForm() {
+    medicationDraft.value = createMedicationDraft();
+    medicationError.value = '';
+    isMedicationReview.value = false;
+    showMedicationForm.value = true;
+}
+
+function closeMedicationForm() {
+    if (isMedicationSaving.value) {
+        return;
+    }
+    showMedicationForm.value = false;
+    medicationError.value = '';
+}
+
+function setMedicationFrequency(count) {
+    const currentTimes = medicationDraft.value.times;
+    medicationDraft.value.times = Array.from(
+        { length: count },
+        (_, index) => currentTimes[index] || defaultDoseTimes[index],
+    );
+}
+
+function selectDays(days) {
+    medicationDraft.value.days_of_week = [...days];
+}
+
+function reviewMedication() {
+    const draft = medicationDraft.value;
+
+    if (draft.end_date && draft.end_date < draft.start_date) {
+        medicationError.value = 'The end date must be on or after the start date.';
+        return;
+    }
+    if (draft.days_of_week.length === 0) {
+        medicationError.value = 'Choose at least one day of the week.';
+        return;
+    }
+    if (draft.times.some((time) => !time) || new Set(draft.times).size !== draft.times.length) {
+        medicationError.value = 'Choose a different time for each daily dose.';
+        return;
+    }
+
+    medicationError.value = '';
+    isMedicationReview.value = true;
+}
+
+function formatPlanDays(days) {
+    const sortedDays = [...days].sort((left, right) => left - right);
+
+    if (sortedDays.length === 7) {
+        return 'Every day';
+    }
+    if (sortedDays.join(',') === '1,2,3,4,5') {
+        return 'Weekdays';
+    }
+
+    return sortedDays
+        .map((day) => daysOfWeek.find((option) => option.value === day)?.label)
+        .filter(Boolean)
+        .join(', ');
+}
+
+function formatPlanDate(value) {
+    if (!value) {
+        return 'No end date';
+    }
+
+    const date = new Date(`${value}T12:00:00Z`);
+    return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+    }).format(date);
+}
+
+async function saveMedication() {
+    if (!selectedPatientId.value || isMedicationSaving.value) {
+        return;
+    }
+
+    isMedicationSaving.value = true;
+    medicationError.value = '';
+
+    try {
+        await axios.post(`/api/patients/${selectedPatientId.value}/orders`, {
+            ...medicationDraft.value,
+            end_date: medicationDraft.value.end_date || null,
+            times: [...medicationDraft.value.times],
+            days_of_week: [...medicationDraft.value.days_of_week],
+        });
+        showMedicationForm.value = false;
+        showToast('Medication added.');
+        await loadDailyItems();
+    } catch (error) {
+        medicationError.value = errorMessage(error);
+    } finally {
+        isMedicationSaving.value = false;
+    }
+}
 </script>
 
 <template>
@@ -339,6 +489,14 @@ function showToast(message) {
                     <div class="title-row">
                         <h1>To-do list</h1>
                         <span class="open-badge">{{ counts.open }} open</span>
+                        <button
+                            v-if="selectedPatient"
+                            class="action-button add-medication-button"
+                            type="button"
+                            @click="openMedicationForm"
+                        >
+                            + Add medication
+                        </button>
                     </div>
                     <div class="heading-controls">
                         <div class="tabs" role="tablist" aria-label="To-do categories">
@@ -377,6 +535,31 @@ function showToast(message) {
                     <strong>{{ selectedPatient.name }}:</strong>
                     Allergies: {{ selectedPatient.allergies || 'none recorded' }}
                 </div>
+
+                <section v-if="selectedPatient" class="medication-plan" aria-labelledby="plan-title">
+                    <div class="plan-heading">
+                        <h2 id="plan-title">Medication plan</h2>
+                        <span class="count-badge">{{ medicationOrders.length }}</span>
+                    </div>
+                    <div v-if="medicationOrders.length" class="plan-list">
+                        <article v-for="order in medicationOrders" :key="order.id" class="plan-card">
+                            <span class="plan-icon" aria-hidden="true">⌁</span>
+                            <div class="plan-copy">
+                                <h3>{{ order.drug_name }}</h3>
+                                <p>{{ order.dose }}, {{ order.route }}</p>
+                                <div class="plan-meta">
+                                    <span>{{ formatPlanDays(order.days_of_week) }}</span>
+                                    <span>{{ order.times.length }} time{{ order.times.length === 1 ? '' : 's' }} daily: {{ order.times.join(', ') }}</span>
+                                    <span>
+                                        {{ formatPlanDate(order.start_date) }} –
+                                        {{ order.end_date ? formatPlanDate(order.end_date) : 'no end date' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                    <p v-else class="plan-empty">No medication orders for this resident yet.</p>
+                </section>
 
                 <section class="summary" aria-label="Daily summary">
                     <div class="summary-card overdue-summary">
@@ -449,6 +632,151 @@ function showToast(message) {
                     </section>
                 </div>
             </main>
+        </div>
+
+        <div v-if="showMedicationForm" class="modal-backdrop" @click.self="closeMedicationForm">
+            <section class="action-modal medication-modal" role="dialog" aria-modal="true" aria-labelledby="medication-title">
+                <button class="modal-close" type="button" aria-label="Close" @click="closeMedicationForm">×</button>
+                <template v-if="!isMedicationReview">
+                    <h2 id="medication-title">Add medication</h2>
+                    <p class="modal-detail">Resident: {{ selectedPatient?.name }}, Room {{ selectedPatient?.room }}</p>
+                    <div class="allergy-notice modal-allergy">
+                        <strong>Allergies:</strong> {{ selectedPatient?.allergies || 'none recorded' }}
+                    </div>
+
+                    <form class="medication-form" @submit.prevent="reviewMedication">
+                        <label class="field-label">
+                            Medication name
+                            <input v-model.trim="medicationDraft.drug_name" type="text" maxlength="100" required>
+                        </label>
+                        <div class="form-columns">
+                            <label class="field-label">
+                                Dose
+                                <input v-model.trim="medicationDraft.dose" type="text" maxlength="50" required>
+                            </label>
+                            <label class="field-label">
+                                Route
+                                <select v-model="medicationDraft.route" required>
+                                    <option>Oral</option>
+                                    <option>Topical</option>
+                                    <option>Inhaled</option>
+                                    <option>Eye drops</option>
+                                    <option>Injection</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-columns">
+                            <label class="field-label">
+                                Start date
+                                <input v-model="medicationDraft.start_date" type="date" required>
+                            </label>
+                            <label class="field-label">
+                                End date <span>(optional)</span>
+                                <input
+                                    v-model="medicationDraft.end_date"
+                                    type="date"
+                                    :min="medicationDraft.start_date"
+                                >
+                            </label>
+                        </div>
+
+                        <fieldset class="day-picker">
+                            <legend>Days</legend>
+                            <div class="day-shortcuts">
+                                <button type="button" @click="selectDays([0, 1, 2, 3, 4, 5, 6])">
+                                    Every day
+                                </button>
+                                <button type="button" @click="selectDays([1, 2, 3, 4, 5])">
+                                    Weekdays
+                                </button>
+                            </div>
+                            <div class="day-options">
+                                <label v-for="day in daysOfWeek" :key="day.value">
+                                    <input
+                                        v-model="medicationDraft.days_of_week"
+                                        type="checkbox"
+                                        :value="day.value"
+                                    >
+                                    <span>{{ day.label }}</span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="frequency-picker">
+                            <legend>How many times a day?</legend>
+                            <div class="frequency-options">
+                                <button
+                                    v-for="count in [1, 2, 3, 4]"
+                                    :key="count"
+                                    type="button"
+                                    :aria-pressed="medicationDraft.times.length === count"
+                                    :class="{ active: medicationDraft.times.length === count }"
+                                    @click="setMedicationFrequency(count)"
+                                >
+                                    {{ count }}×
+                                </button>
+                            </div>
+                        </fieldset>
+                        <div class="time-fields">
+                            <label v-for="(_, index) in medicationDraft.times" :key="index" class="field-label">
+                                Dose {{ index + 1 }}
+                                <input v-model="medicationDraft.times[index]" type="time" required>
+                            </label>
+                        </div>
+
+                        <label class="field-label">
+                            Added by
+                            <input v-model.trim="medicationDraft.added_by" type="text" maxlength="100" autocomplete="name" required>
+                        </label>
+
+                        <p v-if="medicationError" class="inline-error" role="alert">{{ medicationError }}</p>
+                        <div class="modal-actions">
+                            <button class="secondary-button" type="button" @click="closeMedicationForm">Cancel</button>
+                            <button class="action-button" type="submit">Review</button>
+                        </div>
+                    </form>
+                </template>
+                <template v-else>
+                    <h2 id="medication-title">Review medication</h2>
+                    <p class="modal-item-title">{{ medicationDraft.drug_name }}</p>
+                    <p class="modal-detail">
+                        {{ medicationDraft.dose }}, {{ medicationDraft.route }}
+                    </p>
+                    <p class="modal-detail">
+                        {{ formatPlanDays(medicationDraft.days_of_week) }} ·
+                        {{ medicationDraft.times.length }} time{{ medicationDraft.times.length === 1 ? '' : 's' }} daily
+                        ({{ medicationDraft.times.join(', ') }})
+                    </p>
+                    <p class="modal-detail">
+                        {{ formatPlanDate(medicationDraft.start_date) }} –
+                        {{ medicationDraft.end_date ? formatPlanDate(medicationDraft.end_date) : 'no end date' }}
+                    </p>
+                    <p class="modal-detail">Resident: {{ selectedPatient?.name }}, Room {{ selectedPatient?.room }}</p>
+                    <p class="modal-detail">Added by: {{ medicationDraft.added_by }}</p>
+                    <div class="allergy-notice modal-allergy">
+                        <strong>Allergies:</strong> {{ selectedPatient?.allergies || 'none recorded' }}
+                    </div>
+                    <p v-if="medicationError" class="inline-error" role="alert">{{ medicationError }}</p>
+                    <div class="modal-actions">
+                        <button
+                            class="secondary-button"
+                            type="button"
+                            :disabled="isMedicationSaving"
+                            @click="isMedicationReview = false"
+                        >
+                            Back
+                        </button>
+                        <button
+                            class="action-button"
+                            type="button"
+                            :disabled="isMedicationSaving"
+                            @click="saveMedication"
+                        >
+                            {{ isMedicationSaving ? 'Saving…' : 'Confirm and save' }}
+                        </button>
+                    </div>
+                </template>
+            </section>
         </div>
 
         <div v-if="activeItem" class="modal-backdrop" @click.self="closeAction">
