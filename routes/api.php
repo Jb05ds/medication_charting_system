@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/chart', [DailyChartController::class, 'chart']);
 Route::get('/tasks', [DailyChartController::class, 'tasks']);
+Route::post('/tasks', [CareTaskController::class, 'store']);
 Route::post('/tasks/{task}/complete', [CareTaskController::class, 'complete']);
 Route::get('/patients', [PatientController::class, 'index']);
 Route::get('/patients/{patient}/orders', [PatientController::class, 'orders']);
