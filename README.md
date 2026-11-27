@@ -11,6 +11,8 @@
 
 This training prototype uses made-up data only and must not be used for real patient care. The responsive Vue daily board reads residents, scheduled doses, and care tasks from the Laravel API. Selecting a resident updates the page URL; the board also supports dose charting, task completion, filters, and summary counts.
 
+The chart and task API endpoints accept an optional `date=YYYY-MM-DD` query parameter in the configured facility timezone; when omitted, they return today's schedule.
+
 Configure the database and set `APP_TIMEZONE` in `.env` to the facility's timezone (for example, `Asia/Singapore`). This keeps the displayed date, scheduled doses, and care tasks aligned around local midnight. Then run the Laravel and Vite development servers in separate terminals:
 
 ```sh

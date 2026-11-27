@@ -16,6 +16,7 @@ class ListCareTasksRequest extends FormRequest
     {
         return [
             'patient_id' => ['sometimes', 'integer', Rule::exists('patients', 'id')],
+            'date' => ['sometimes', 'date_format:Y-m-d'],
             'status' => ['sometimes', Rule::in(['due', 'overdue', 'done'])],
         ];
     }

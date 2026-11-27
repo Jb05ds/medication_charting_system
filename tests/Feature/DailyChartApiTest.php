@@ -73,6 +73,37 @@ class DailyChartApiTest extends TestCase
         }
     }
 
+    public function test_it_lists_chart_items_and_tasks_for_a_requested_date(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-26 10:15:00'));
+
+        $patient = $this->createPatient('Taylor Alpha', '101');
+        $this->createOrder($patient, [5], ['08:00']);
+        CareTask::query()->create([
+            'patient_id' => $patient->id,
+            'title' => 'Tomorrow task',
+            'scheduled_for' => '2026-11-27 09:00:00',
+        ]);
+
+        $this->getJson('/api/chart?patient_id='.$patient->id.'&date=2026-11-27')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.scheduled_for', '2026-11-27T08:00:00+00:00');
+
+        $this->getJson('/api/tasks?patient_id='.$patient->id.'&date=2026-11-27')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Tomorrow task');
+
+        $this->getJson('/api/chart?date=not-a-date')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('date');
+
+        $this->getJson('/api/tasks?date=not-a-date')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('date');
+    }
+
     public function test_it_filters_chart_items_by_status_and_rejects_unknown_statuses(): void
     {
         $this->travelTo(Carbon::parse('2026-11-26 10:15:00'));

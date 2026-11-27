@@ -19,8 +19,8 @@ class DailyChartController extends Controller
     {
         $filters = $request->validated();
         $now = now();
-        $date = $now->toDateString();
-        $weekday = $now->dayOfWeek;
+        $date = $filters['date'] ?? $now->toDateString();
+        $weekday = Carbon::parse($date, config('app.timezone'))->dayOfWeek;
 
         $orders = MedicationOrder::query()
             ->with([
@@ -90,10 +90,11 @@ class DailyChartController extends Controller
     {
         $filters = $request->validated();
         $now = now();
+        $date = $filters['date'] ?? $now->toDateString();
 
         $tasks = CareTask::query()
             ->with('patient')
-            ->whereDate('scheduled_for', $now->toDateString())
+            ->whereDate('scheduled_for', $date)
             ->when(
                 isset($filters['patient_id']),
                 fn ($query) => $query->where('patient_id', $filters['patient_id'])
