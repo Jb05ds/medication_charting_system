@@ -43,6 +43,36 @@ class DailyChartApiTest extends TestCase
             ->assertJsonPath('data.0.patient_name', 'Taylor Alpha');
     }
 
+    public function test_it_uses_the_facility_timezone_to_determine_the_daily_schedule(): void
+    {
+        $originalTimezone = date_default_timezone_get();
+        config(['app.timezone' => 'Asia/Singapore']);
+        date_default_timezone_set('Asia/Singapore');
+        $this->travelTo(Carbon::parse('2026-11-26 23:30:00', 'UTC'));
+
+        try {
+            $patient = $this->createPatient('Taylor Alpha', '101');
+            $this->createOrder($patient, [5], ['08:00']);
+            CareTask::query()->create([
+                'patient_id' => $patient->id,
+                'title' => 'Morning task',
+                'scheduled_for' => '2026-11-27 08:00:00',
+            ]);
+
+            $this->getJson('/api/chart?patient_id='.$patient->id)
+                ->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.scheduled_for', '2026-11-27T08:00:00+08:00');
+
+            $this->getJson('/api/tasks?patient_id='.$patient->id)
+                ->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.scheduled_for', '2026-11-27T08:00:00+08:00');
+        } finally {
+            date_default_timezone_set($originalTimezone);
+        }
+    }
+
     public function test_it_filters_chart_items_by_status_and_rejects_unknown_statuses(): void
     {
         $this->travelTo(Carbon::parse('2026-11-26 10:15:00'));
