@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CareTask;
 use App\Models\MedicationOrder;
+use App\Models\Patient;
 use Database\Seeders\MedicationChartingSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -21,6 +22,11 @@ class MedicationChartingSeederTest extends TestCase
         $this->assertDatabaseCount('medication_orders', 3);
         $this->assertDatabaseCount('medication_order_times', 4);
         $this->assertDatabaseCount('care_tasks', 3);
+        $this->assertSame(
+            ['Eleanor Brooks', 'Margaret Wilson', 'Robert Anderson'],
+            Patient::query()->orderBy('name')->pluck('name')->all()
+        );
+        $this->assertSame(3, CareTask::query()->whereDate('scheduled_for', today())->count());
 
         $weekdayOrder = MedicationOrder::query()
             ->with('times')
@@ -74,6 +80,7 @@ class MedicationChartingSeederTest extends TestCase
         $this->assertDatabaseCount('medication_orders', 3);
         $this->assertDatabaseCount('medication_order_times', 4);
         $this->assertDatabaseCount('care_tasks', 3);
+        $this->assertSame(3, CareTask::query()->whereDate('scheduled_for', today())->count());
         $this->assertDatabaseHas('care_tasks', [
             'id' => $task->id,
             'completed_by' => 'Demo Nurse',
