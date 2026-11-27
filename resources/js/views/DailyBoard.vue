@@ -1,6 +1,6 @@
 <script setup>
 import axios from 'axios';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 const route = useRoute();
@@ -28,8 +28,12 @@ const medicationError = ref('');
 const medicationDraft = ref(createMedicationDraft());
 const toastMessage = ref('');
 const showEmergencyNotice = ref(false);
+const medicationDialog = ref(null);
+const actionDialog = ref(null);
+const emergencyDialog = ref(null);
 let toastTimer;
 let latestDailyRequest = 0;
+let modalTrigger = null;
 
 const daysOfWeek = [
     { value: 0, label: 'Sun' },
@@ -228,15 +232,95 @@ watch(() => route.query.patient, () => {
     }
 });
 
-onMounted(initialize);
+onMounted(() => {
+    window.addEventListener('keydown', handleModalKeydown);
+    initialize();
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleModalKeydown);
+    window.clearTimeout(toastTimer);
+});
+
+function rememberModalTrigger() {
+    modalTrigger = document.activeElement;
+}
+
+function focusDialog(dialog) {
+    nextTick(() => dialog.value?.focus());
+}
+
+function restoreModalTrigger() {
+    const trigger = modalTrigger;
+    modalTrigger = null;
+    nextTick(() => {
+        if (trigger instanceof HTMLElement && trigger.isConnected) {
+            trigger.focus();
+        }
+    });
+}
+
+function handleModalKeydown(event) {
+    if (event.key === 'Escape') {
+        if (showMedicationForm.value) {
+            closeMedicationForm();
+        } else if (activeItem.value) {
+            closeAction();
+        } else if (showEmergencyNotice.value) {
+            closeEmergencyNotice();
+        }
+        return;
+    }
+
+    if (event.key !== 'Tab') {
+        return;
+    }
+
+    const dialog = showMedicationForm.value
+        ? medicationDialog.value
+        : activeItem.value
+            ? actionDialog.value
+            : showEmergencyNotice.value
+                ? emergencyDialog.value
+                : null;
+    if (!dialog) {
+        return;
+    }
+
+    const focusableElements = [...dialog.querySelectorAll(
+        'button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+    )];
+    if (!focusableElements.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+    }
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const currentIndex = focusableElements.indexOf(document.activeElement);
+
+    if (event.shiftKey && currentIndex <= 0) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && currentIndex === focusableElements.length - 1) {
+        event.preventDefault();
+        first.focus();
+    } else if (!event.shiftKey && currentIndex < 0) {
+        event.preventDefault();
+        first.focus();
+    }
+}
 
 function beginAction(item) {
+    rememberModalTrigger();
     activeItem.value = item;
     actionError.value = '';
     reason.value = '';
     nurseName.value = '';
     isReviewing.value = false;
     actionStatus.value = 'given';
+    focusDialog(actionDialog);
 }
 
 function closeAction() {
@@ -245,6 +329,7 @@ function closeAction() {
     }
     activeItem.value = null;
     actionError.value = '';
+    restoreModalTrigger();
 }
 
 async function saveAction() {
@@ -328,10 +413,12 @@ function currentAppDate() {
 }
 
 function openMedicationForm() {
+    rememberModalTrigger();
     medicationDraft.value = createMedicationDraft();
     medicationError.value = '';
     isMedicationReview.value = false;
     showMedicationForm.value = true;
+    focusDialog(medicationDialog);
 }
 
 function closeMedicationForm() {
@@ -340,6 +427,18 @@ function closeMedicationForm() {
     }
     showMedicationForm.value = false;
     medicationError.value = '';
+    restoreModalTrigger();
+}
+
+function openEmergencyNotice() {
+    rememberModalTrigger();
+    showEmergencyNotice.value = true;
+    focusDialog(emergencyDialog);
+}
+
+function closeEmergencyNotice() {
+    showEmergencyNotice.value = false;
+    restoreModalTrigger();
 }
 
 function setMedicationFrequency(count) {
@@ -444,7 +543,7 @@ async function saveMedication() {
                     <strong>Demo Care Home</strong>
                 </span>
             </a>
-            <button class="emergency-button" type="button" @click="showEmergencyNotice = true">
+            <button class="emergency-button" type="button" @click="openEmergencyNotice">
                 Emergency
             </button>
         </header>
@@ -647,7 +746,14 @@ async function saveMedication() {
         </div>
 
         <div v-if="showMedicationForm" class="modal-backdrop" @click.self="closeMedicationForm">
-            <section class="action-modal medication-modal" role="dialog" aria-modal="true" aria-labelledby="medication-title">
+            <section
+                ref="medicationDialog"
+                class="action-modal medication-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="medication-title"
+                tabindex="-1"
+            >
                 <button class="modal-close" type="button" aria-label="Close" @click="closeMedicationForm">×</button>
                 <template v-if="!isMedicationReview">
                     <h2 id="medication-title">Add medication</h2>
@@ -792,7 +898,14 @@ async function saveMedication() {
         </div>
 
         <div v-if="activeItem" class="modal-backdrop" @click.self="closeAction">
-            <section class="action-modal" role="dialog" aria-modal="true" aria-labelledby="action-title">
+            <section
+                ref="actionDialog"
+                class="action-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="action-title"
+                tabindex="-1"
+            >
                 <button class="modal-close" type="button" aria-label="Close" @click="closeAction">×</button>
                 <template v-if="!isReviewing">
                     <h2 id="action-title">
@@ -865,12 +978,19 @@ async function saveMedication() {
             </section>
         </div>
 
-        <div v-if="showEmergencyNotice" class="modal-backdrop" @click.self="showEmergencyNotice = false">
-            <section class="action-modal emergency-modal" role="dialog" aria-modal="true" aria-labelledby="emergency-title">
+        <div v-if="showEmergencyNotice" class="modal-backdrop" @click.self="closeEmergencyNotice">
+            <section
+                ref="emergencyDialog"
+                class="action-modal emergency-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="emergency-title"
+                tabindex="-1"
+            >
                 <h2 id="emergency-title">Emergency demo</h2>
                 <p>No alert was sent. This button contacts no one.</p>
                 <div class="modal-actions">
-                    <button class="action-button" type="button" @click="showEmergencyNotice = false">Close</button>
+                    <button class="action-button" type="button" @click="closeEmergencyNotice">Close</button>
                 </div>
             </section>
         </div>

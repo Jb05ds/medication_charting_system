@@ -356,4 +356,45 @@ describe('DailyBoard', () => {
         expect(board.textContent).toContain('Fictional medicine');
         expect(board.textContent).not.toContain('Stale resident dose');
     });
+
+    it('traps keyboard focus in an action dialog and restores it after Escape', async () => {
+        const board = await mountBoard();
+        const trigger = [...board.querySelectorAll('button')]
+            .find((button) => button.textContent.trim() === 'Chart');
+
+        trigger.focus();
+        trigger.click();
+        await flushPromises();
+        const actionModal = board.querySelector('.action-modal:not(.emergency-modal):not(.medication-modal)');
+        const closeButton = actionModal.querySelector('button[aria-label="Close"]');
+
+        expect(document.activeElement).toBe(actionModal);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Tab',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement).toBe(closeButton);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        }));
+        const focusableElements = actionModal.querySelectorAll(
+            'button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+        );
+        expect(document.activeElement).toBe(focusableElements[focusableElements.length - 1]);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+        }));
+        await flushPromises();
+
+        expect(board.querySelector('.action-modal:not(.emergency-modal):not(.medication-modal)')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+    });
 });
