@@ -2,10 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\CareTask;
+use App\Models\MedicationOrder;
+use App\Models\Patient;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use App\Models\Patient;
-use App\Models\CareTask;
 
 class MedicationChartingSeeder extends Seeder
 {
@@ -38,6 +39,58 @@ class MedicationChartingSeeder extends Seeder
                 ]
             );
 
+            $medicationOrders = [
+                [
+                    'patient' => $patient1,
+                    'drug_name' => 'Demozine',
+                    'dose' => '1 tablet',
+                    'route' => 'Oral',
+                    'days_of_week' => [0, 1, 2, 3, 4, 5, 6],
+                    'times' => ['08:00', '20:00'],
+                ],
+                [
+                    'patient' => $patient2,
+                    'drug_name' => 'Testafen',
+                    'dose' => '2 tablets',
+                    'route' => 'Oral',
+                    'days_of_week' => [1, 2, 3, 4, 5],
+                    'times' => ['09:00'],
+                ],
+                [
+                    'patient' => $patient3,
+                    'drug_name' => 'Calmgel',
+                    'dose' => '1 application',
+                    'route' => 'Topical',
+                    'days_of_week' => [1, 3, 5],
+                    'times' => ['14:00'],
+                ],
+            ];
+
+            foreach ($medicationOrders as $medicationOrder) {
+                $patient = $medicationOrder['patient'];
+                $times = $medicationOrder['times'];
+                unset($medicationOrder['patient'], $medicationOrder['times']);
+
+                $order = MedicationOrder::firstOrCreate(
+                    [
+                        'patient_id' => $patient->id,
+                        'drug_name' => $medicationOrder['drug_name'],
+                    ],
+                    [
+                        ...$medicationOrder,
+                        'start_date' => today()->subDays(7)->toDateString(),
+                        'end_date' => null,
+                        'added_by' => 'Demo Nurse',
+                    ]
+                );
+
+                if ($order->wasRecentlyCreated) {
+                    $order->times()->createMany(
+                        array_map(fn (string $time): array => ['time' => $time], $times)
+                    );
+                }
+            }
+
             // Today's care tasks
             $tasks = [
                 [
@@ -58,17 +111,7 @@ class MedicationChartingSeeder extends Seeder
             ];
 
             foreach ($tasks as $task) {
-                CareTask::updateOrCreate(
-                    [
-                        'patient_id' => $task['patient_id'],
-                        'title' => $task['title'],
-                        'scheduled_for' => $task['scheduled_for'],
-                    ],
-                    [
-                        'completed_by' => null,
-                        'completed_at' => null,
-                    ]
-                );
+                CareTask::firstOrCreate($task);
             }
         });
     }
