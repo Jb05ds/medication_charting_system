@@ -9,7 +9,7 @@
 
 ## Medication chart prototype
 
-This training prototype uses made-up data only and must not be used for real patient care. The responsive Vue daily board reads residents, scheduled doses, and care tasks from the Laravel API. Selecting a resident updates the page URL; the board also supports dose charting, task completion, filters, and summary counts.
+This training prototype uses made-up data only and must not be used for real patient care. The responsive Vue daily board reads residents, scheduled doses, and care tasks from the Laravel API. Selecting a resident or past date updates the page URL; the board also supports dose charting, task completion, filters, and summary counts.
 
 The chart and task API endpoints accept an optional `date=YYYY-MM-DD` query parameter in the configured facility timezone; when omitted, they return today's schedule.
 

@@ -82,6 +82,7 @@ async function mountBoard() {
     app.use(router);
     app.mount(wrapper);
     wrapper.__vueApp = app;
+    wrapper.__vueRouter = router;
     await flushPromises();
 
     return wrapper;
@@ -209,6 +210,35 @@ describe('DailyBoard', () => {
         expect(medicationButton.getAttribute('aria-pressed')).toBe('false');
         expect(board.querySelector('.timeline').textContent).toContain('Walk outside');
         expect(board.querySelector('.timeline').textContent).not.toContain('Fictional medicine');
+    });
+
+    it('loads the selected past date and returns to today with date navigation', async () => {
+        const board = await mountBoard();
+        const dateInput = board.querySelector('#chart-date');
+        const today = dateInput.value;
+        const previousDate = new Date(`${today}T00:00:00Z`);
+        previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+        const previousDateValue = previousDate.toISOString().slice(0, 10);
+
+        setValue(dateInput, previousDateValue);
+        await flushPromises();
+
+        expect(dateInput.value).toBe(previousDateValue);
+        expect(wrapper.__vueRouter.currentRoute.value.query.date).toBe(previousDateValue);
+        expect(board.textContent).toContain('Viewing:');
+        expect(axios.get).toHaveBeenCalledWith('/api/chart', {
+            params: { date: previousDateValue, patient_id: 1 },
+        });
+        expect(axios.get).toHaveBeenCalledWith('/api/tasks', {
+            params: { date: previousDateValue, patient_id: 1 },
+        });
+
+        clickButton('Next day', board);
+        await flushPromises();
+
+        expect(dateInput.value).toBe(today);
+        expect(wrapper.__vueRouter.currentRoute.value.query.date).toBeUndefined();
+        expect(board.textContent).toContain('Today:');
     });
 
     it('reviews and saves a medication order with its selected schedule', async () => {

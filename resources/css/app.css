@@ -426,6 +426,24 @@ textarea:focus-visible {
     font-weight: 700;
 }
 
+.date-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.date-navigation input {
+    min-width: 160px;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid #d5dee7;
+    border-radius: 9px;
+    color: #263b51;
+    background: white;
+    font: inherit;
+}
+
 .timeline {
     display: grid;
     gap: 16px;
@@ -945,6 +963,14 @@ textarea:focus-visible {
     .sample-day {
         margin: 14px 0 18px;
         font-size: 13px;
+    }
+
+    .date-navigation {
+        gap: 6px;
+    }
+
+    .date-navigation .secondary-button {
+        padding: 0 10px;
     }
 
     .item-card {

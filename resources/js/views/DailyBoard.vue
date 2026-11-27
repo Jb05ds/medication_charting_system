@@ -6,6 +6,16 @@ import { useRoute, useRouter } from 'vue-router';
 const route = useRoute();
 const router = useRouter();
 const appTimezone = document.querySelector('meta[name="app-timezone"]')?.content || 'UTC';
+const todayDate = computed(() => currentAppDate());
+const selectedDate = computed(() => {
+    const requestedDate = route.query.date;
+
+    return typeof requestedDate === 'string'
+        && isValidDate(requestedDate)
+        && requestedDate <= todayDate.value
+        ? requestedDate
+        : todayDate.value;
+});
 const patients = ref([]);
 const medicationDoses = ref([]);
 const medicationOrders = ref([]);
@@ -115,15 +125,18 @@ const tabCounts = computed(() => ({
     task: careTasks.value.length,
 }));
 
-const dateLabel = computed(() =>
-    new Intl.DateTimeFormat(undefined, {
+const isToday = computed(() => selectedDate.value === todayDate.value);
+const dateLabel = computed(() => {
+    const selectedDay = new Date(`${selectedDate.value}T12:00:00Z`);
+
+    return new Intl.DateTimeFormat(undefined, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         year: 'numeric',
-        timeZone: appTimezone,
-    }).format(new Date()),
-);
+        timeZone: 'UTC',
+    }).format(selectedDay);
+});
 
 function formatTime(value) {
     return new Intl.DateTimeFormat(undefined, {
@@ -173,9 +186,10 @@ async function loadDailyItems() {
     medicationOrders.value = [];
     careTasks.value = [];
 
-    const params = selectedPatientId.value
-        ? { patient_id: selectedPatientId.value }
-        : {};
+    const params = {
+        date: selectedDate.value,
+        ...(selectedPatientId.value ? { patient_id: selectedPatientId.value } : {}),
+    };
     const ordersRequest = selectedPatientId.value
         ? axios.get(`/api/patients/${selectedPatientId.value}/orders`)
         : Promise.resolve({ data: { data: [] } });
@@ -226,7 +240,36 @@ async function selectPatient(patientId) {
     });
 }
 
-watch(() => route.query.patient, () => {
+async function selectDate(date) {
+    if (!isValidDate(date) || date > todayDate.value) {
+        return;
+    }
+
+    await router.replace({
+        query: {
+            ...route.query,
+            date: date === todayDate.value ? undefined : date,
+        },
+    });
+}
+
+function changeDateBy(days) {
+    const date = new Date(`${selectedDate.value}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    void selectDate(date.toISOString().slice(0, 10));
+}
+
+function isValidDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return false;
+    }
+
+    const date = new Date(`${value}T00:00:00Z`);
+
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+watch(() => [route.query.patient, route.query.date], () => {
     if (patients.value.length) {
         loadDailyItems();
     }
@@ -686,7 +729,28 @@ async function saveMedication() {
                     </div>
                 </section>
 
-                <p class="sample-day">Today: {{ dateLabel }}</p>
+                <div class="date-navigation" aria-label="Chart date">
+                    <button class="secondary-button" type="button" @click="changeDateBy(-1)">
+                        Previous day
+                    </button>
+                    <label class="sr-only" for="chart-date">Choose chart date</label>
+                    <input
+                        id="chart-date"
+                        type="date"
+                        :max="todayDate"
+                        :value="selectedDate"
+                        @change="selectDate($event.target.value)"
+                    >
+                    <button
+                        class="secondary-button"
+                        type="button"
+                        :disabled="isToday"
+                        @click="changeDateBy(1)"
+                    >
+                        Next day
+                    </button>
+                </div>
+                <p class="sample-day">{{ isToday ? 'Today' : 'Viewing' }}: {{ dateLabel }}</p>
 
                 <div v-if="isLoading" class="state-message" role="status">
                     Loading today’s list…
