@@ -7,6 +7,20 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Medication chart prototype
+
+This training prototype uses made-up data only and must not be used for real patient care. The responsive Vue daily board reads residents, scheduled doses, and care tasks from the Laravel API. Selecting a resident updates the page URL; the board also supports dose charting, task completion, filters, and summary counts.
+
+Configure the database in `.env`, then run the Laravel and Vite development servers in separate terminals:
+
+```sh
+php artisan serve
+npm install
+npm run dev
+```
+
+Open the Laravel address shown by Artisan. Apply migrations and seed the sample data for the configured database when needed.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
