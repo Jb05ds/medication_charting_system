@@ -31,6 +31,10 @@ const order = {
 
 let wrapper;
 let orders;
+let doseStatus;
+let doseReason;
+let taskStatus;
+let completedBy;
 
 async function flushPromises() {
     await Promise.resolve();
@@ -78,6 +82,10 @@ async function mountBoard() {
 describe('DailyBoard', () => {
     beforeEach(() => {
         orders = [order];
+        doseStatus = 'overdue';
+        doseReason = null;
+        taskStatus = 'done';
+        completedBy = 'Demo Nurse';
         axios.get.mockImplementation((url) => {
             if (url === '/api/patients') {
                 return Promise.resolve({ data: { data: [patient] } });
@@ -97,7 +105,11 @@ describe('DailyBoard', () => {
                             dose: order.dose,
                             route: order.route,
                             scheduled_for: '2026-11-27T08:00:00+00:00',
-                            status: 'overdue',
+                            status: doseStatus,
+                            reason: doseReason,
+                            charted_by: doseStatus === 'given' || doseStatus === 'held' || doseStatus === 'refused'
+                                ? 'Demo Nurse'
+                                : null,
                         }],
                     },
                 });
@@ -112,9 +124,9 @@ describe('DailyBoard', () => {
                             room: patient.room,
                             title: 'Walk outside',
                             scheduled_for: '2026-11-27T09:00:00+00:00',
-                            status: 'done',
-                            completed_by: 'Demo Nurse',
-                            completed_at: '2026-11-27T09:15:00+00:00',
+                            status: taskStatus,
+                            completed_by: taskStatus === 'done' ? completedBy : null,
+                            completed_at: taskStatus === 'done' ? '2026-11-27T09:15:00+00:00' : null,
                         }],
                     },
                 });
@@ -219,5 +231,80 @@ describe('DailyBoard', () => {
         expect(board.textContent).toContain('Choose a different time for each daily dose.');
         expect(board.textContent).not.toContain('Review medication');
         expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it('reviews a held dose with its reason and charts it once through the API', async () => {
+        const board = await mountBoard();
+        axios.post.mockImplementation(async (_url, payload) => {
+            doseStatus = payload.status;
+            doseReason = payload.reason;
+
+            return { data: {} };
+        });
+
+        clickButton('Chart', board);
+        await flushPromises();
+        const actionModal = board.querySelector('.action-modal:not(.emergency-modal):not(.medication-modal)');
+        const heldOption = actionModal.querySelector('input[name="dose-status"][value="held"]');
+        heldOption.checked = true;
+        heldOption.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+        setValue(actionModal.querySelector('textarea'), 'Resident declined this dose');
+        setValue(actionModal.querySelector('input[autocomplete="name"]'), 'Demo Nurse');
+        clickButton('Review', actionModal);
+        await flushPromises();
+
+        expect(actionModal.textContent).toContain('Confirm dose');
+        expect(actionModal.textContent).toContain('Reason: Resident declined this dose');
+
+        clickButton('Confirm and save', actionModal);
+        await flushPromises();
+
+        expect(axios.post).toHaveBeenCalledWith('/api/orders/20/administrations', {
+            scheduled_for: '2026-11-27T08:00:00+00:00',
+            status: 'held',
+            reason: 'Resident declined this dose',
+            charted_by: 'Demo Nurse',
+        });
+        expect(board.textContent).toContain('Dose charted.');
+        expect(board.textContent).toContain('Held: Resident declined this dose');
+    });
+
+    it('reviews and completes a task using the entered nurse name', async () => {
+        taskStatus = 'due';
+        const board = await mountBoard();
+        axios.post.mockImplementation(async (_url, payload) => {
+            taskStatus = 'done';
+            completedBy = payload.completed_by;
+
+            return { data: {} };
+        });
+
+        clickButton('Complete', board);
+        await flushPromises();
+        const actionModal = board.querySelector('.action-modal:not(.emergency-modal):not(.medication-modal)');
+        setValue(actionModal.querySelector('input[autocomplete="name"]'), 'Demo Nurse');
+        clickButton('Review', actionModal);
+        await flushPromises();
+        expect(actionModal.textContent).toContain('Confirm task');
+        expect(actionModal.textContent).toContain('Completed by: Demo Nurse');
+
+        clickButton('Confirm and save', actionModal);
+        await flushPromises();
+
+        expect(axios.post).toHaveBeenCalledWith('/api/tasks/30/complete', {
+            completed_by: 'Demo Nurse',
+        });
+        expect(board.textContent).toContain('Task completed.');
+        expect(board.querySelector('.item-card.status-done')).not.toBeNull();
+    });
+
+    it('shows that the Emergency demo sends no alert', async () => {
+        const board = await mountBoard();
+
+        clickButton('Emergency', board);
+        await flushPromises();
+
+        expect(board.textContent).toContain('No alert was sent. This button contacts no one.');
     });
 });
