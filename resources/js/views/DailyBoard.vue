@@ -610,7 +610,7 @@ async function saveMedication() {
                         </button>
                     </div>
                     <div class="heading-controls">
-                        <div class="tabs" role="tablist" aria-label="To-do categories">
+                        <div class="tabs" role="group" aria-label="Filter by item type">
                             <button
                                 v-for="tab in [
                                     { id: 'all', label: 'All' },
@@ -619,8 +619,7 @@ async function saveMedication() {
                                 ]"
                                 :key="tab.id"
                                 type="button"
-                                role="tab"
-                                :aria-selected="selectedTab === tab.id"
+                                :aria-pressed="selectedTab === tab.id"
                                 :class="{ active: selectedTab === tab.id }"
                                 @click="selectedTab = tab.id"
                             >

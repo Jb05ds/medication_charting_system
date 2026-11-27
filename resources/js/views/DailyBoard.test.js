@@ -181,6 +181,36 @@ describe('DailyBoard', () => {
         expect(summary.textContent).toContain('1Recorded');
     });
 
+    it('exposes category filters as pressed buttons and filters the daily list', async () => {
+        const board = await mountBoard();
+        const categoryFilter = board.querySelector('[aria-label="Filter by item type"]');
+        const allButton = [...categoryFilter.querySelectorAll('button')]
+            .find((button) => button.textContent.includes('All'));
+        const medicationButton = [...categoryFilter.querySelectorAll('button')]
+            .find((button) => button.textContent.includes('Medications'));
+        const taskButton = [...categoryFilter.querySelectorAll('button')]
+            .find((button) => button.textContent.includes('Tasks'));
+
+        expect(categoryFilter.getAttribute('role')).toBe('group');
+        expect(allButton.getAttribute('aria-pressed')).toBe('true');
+        expect(board.textContent).toContain('Walk outside');
+
+        medicationButton.click();
+        await flushPromises();
+
+        expect(medicationButton.getAttribute('aria-pressed')).toBe('true');
+        expect(allButton.getAttribute('aria-pressed')).toBe('false');
+        expect(board.textContent).not.toContain('Walk outside');
+
+        taskButton.click();
+        await flushPromises();
+
+        expect(taskButton.getAttribute('aria-pressed')).toBe('true');
+        expect(medicationButton.getAttribute('aria-pressed')).toBe('false');
+        expect(board.querySelector('.timeline').textContent).toContain('Walk outside');
+        expect(board.querySelector('.timeline').textContent).not.toContain('Fictional medicine');
+    });
+
     it('reviews and saves a medication order with its selected schedule', async () => {
         orders = [];
         const board = await mountBoard();
